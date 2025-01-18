@@ -21,12 +21,17 @@ int main(int argc, char *argv[]) {
     std::thread keyboardThread([&messageQueue, &shouldRun, &handler, &stompProtocol, &handlerMutex]() {
         int sub = 1;
         int id = 1;
+        bool log = false;
         
         while (shouldRun) {
             std::string line;
             std::getline(std::cin, line);
 
             if (line.find("login") != std::string::npos) {
+                if (log){
+                    std::cout << "Already logged in, Please logout and try again." << std::endl;
+                    continue;
+                }
                 std::istringstream iss(line);
                 std::string command, host_port, username, password;
                 iss >> command >> host_port >> username >> password;
@@ -58,6 +63,7 @@ int main(int argc, char *argv[]) {
                             std::lock_guard<std::mutex> lock(handlerMutex);
                             handler = newHandler;
                             stompProtocol = newStompProtocol;
+                            log = true;
                         } else {
                             std::cout << "Error: " << fullresponse << std::endl;
                         }
@@ -84,6 +90,7 @@ int main(int argc, char *argv[]) {
                     std::cout << "Logged out" << std::endl;
                     handler = nullptr;
                     stompProtocol = nullptr;
+                    log = false;
                 } else {
                     std::cout << "Unknown command" << std::endl;
                 }
