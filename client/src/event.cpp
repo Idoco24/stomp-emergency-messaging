@@ -75,15 +75,14 @@ const std::string &Event::get_description() const
 
 std::string Event::toString() const {
     std::ostringstream oss;
-    oss << "user:" << eventOwnerUser << "\n"
-        << "city:" << city << "\n"
-        << "event name:" << name << "\n"
-        << "date time:" << date_time << "\n"
+    oss << "city: " << city << "\n"
+        << "event name: " << name << "\n"
+        << "date time: " << date_time << "\n"
         << "general information:\n";
     for (const auto& info : general_information) {
-        oss << info.first << ":" << info.second << "\n";
+        oss<< "\t" << info.first << ": " << info.second << "\n";
     }
-    oss << "description:" << description << "\n";
+    oss << "description:\n" << description << "\n";
     return oss.str();
 }
 

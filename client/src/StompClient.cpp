@@ -19,11 +19,19 @@ int main(int argc, char *argv[]) {
 
     // Keyboard input thread
     std::thread keyboardThread([&messageQueue, &shouldRun, &handler, &stompProtocol, &handlerMutex]() {
-        int sub = 1;
-        int id = 1;
-        bool log = false;
-        
+        int sub = 0;
+        int id = 0;
+        bool log;
+        std::string user;
+
         while (shouldRun) {
+            if (stompProtocol==nullptr){
+                // std::cout << "Please login first" << std::endl;
+                log = false;
+            }
+            else {
+                log = stompProtocol->isConnected();
+            }
             std::string line;
             std::getline(std::cin, line);
 
@@ -35,7 +43,7 @@ int main(int argc, char *argv[]) {
                 std::istringstream iss(line);
                 std::string command, host_port, username, password;
                 iss >> command >> host_port >> username >> password;
-
+                user = username;
                 if (command == "login") {
                     size_t colon_pos = host_port.find(':');
                     if (colon_pos == std::string::npos) {
@@ -59,10 +67,12 @@ int main(int argc, char *argv[]) {
                             fullresponse += response;
                         }
                         if (fullresponse.find("CONNECTED") != std::string::npos) {
-                            std::cout << "Login successful" << std::endl;
+                            // std::cout << "Login successful" << std::endl;
                             std::lock_guard<std::mutex> lock(handlerMutex);
+                            
                             handler = newHandler;
                             stompProtocol = newStompProtocol;
+                            stompProtocol->processFrame(fullresponse);
                             log = true;
                         } else {
                             std::cout << "Error: " << fullresponse << std::endl;
@@ -71,7 +81,7 @@ int main(int argc, char *argv[]) {
                 }
             } else {
                 std::lock_guard<std::mutex> lock(handlerMutex);
-                if (!handler) {
+                if (!log) {
                     std::cout << "Please login first" << std::endl;
                     continue;
                 }
@@ -87,11 +97,42 @@ int main(int argc, char *argv[]) {
                     }
                 } else if (line == "logout") {
                     messageQueue.enqueue(stompProtocol->createDisconnectFrame(sub++));
-                    std::cout << "Logged out" << std::endl;
-                    handler = nullptr;
-                    stompProtocol = nullptr;
-                    log = false;
-                } else {
+                    // std::cout << "Logged out" << std::endl;
+                    // handler = nullptr;
+                    // stompProtocol = nullptr;
+                    // log = false;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                
+                }else if (line.find("exit") != std::string::npos) {
+                    std::istringstream iss(line);
+                    std::string command, args;
+                    iss >> command >> args;
+                    if (args.empty()) {
+                        std::cout << "Usage: exit {channel name}" << std::endl;
+                    } else {
+                        messageQueue.enqueue(stompProtocol->createUnsubscribeFrame(args, sub++));
+                    }
+                } else if (line.find("report")!= std::string::npos) {
+                    std::istringstream iss(line);
+                    std::string command, args;
+                    iss >> command >> args;
+                    if (args.empty()) {
+                        std::cout << "Usage: report {file name}" << std::endl;
+                    }else{
+                        names_and_events mappy = parseEventsFile(args);
+                        std::string channel_name = mappy.channel_name;
+                        std::cout << "channel name: " << channel_name << std::endl;
+                        std::vector<Event> events = mappy.events;
+                        
+                        for (Event event: events){
+                            std::string report = stompProtocol->createSendFrame(channel_name, user ,event.toString());
+                            if (report!= ""){
+                            messageQueue.enqueue(report);
+                        }}
+                        // std::string report = stompProtocol->createSendFrame()
+                    }
+                }
+                 else {
                     std::cout << "Unknown command" << std::endl;
                 }
             }
