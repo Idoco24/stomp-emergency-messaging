@@ -27,7 +27,7 @@
 
 # # End of file
 
-all : clean compile link run
+all : clean compile link clear run
 
 clean:
 	rm -f bin/*.o
@@ -43,5 +43,8 @@ link:
 
 run:
 	./bin/StompClient
+
+clear:
+	clear
 
 .PHONY: clean compile link run

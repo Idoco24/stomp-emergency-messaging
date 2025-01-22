@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SAFEQUEUE_H
+#define SAFEQUEUE_H
 
 #include <queue>
 #include <mutex>
@@ -7,30 +8,35 @@
 template <typename T>
 class SafeQueue {
 public:
-    SafeQueue() : queue(), mtx(), cv() {} // Explicitly initialize members
+    SafeQueue() = default;
     ~SafeQueue() = default;
 
+    // Enqueues a value into the queue
     void enqueue(T value) {
-        std::lock_guard<std::mutex> lock(mtx);
+        std::lock_guard<std::mutex> lock(mtx); // Lock once
         queue.push(value);
-        cv.notify_one();
+        cv.notify_one(); // Notify waiting threads
     }
 
+    // Dequeues a value from the queue (blocking if empty)
     T dequeue() {
-        std::unique_lock<std::mutex> lock(mtx);
-        cv.wait(lock, [this] { return !queue.empty(); });
+        std::unique_lock<std::mutex> lock(mtx); // Lock once
+        cv.wait(lock, [this] { return !queue.empty(); }); // Wait until not empty
         T value = queue.front();
         queue.pop();
         return value;
     }
 
-    bool empty() const {
-        std::lock_guard<std::mutex> lock(mtx);
+    // Checks if the queue is empty
+    bool isEmpty() {
+        std::lock_guard<std::mutex> lock(mtx); // Lock for thread-safe access
         return queue.empty();
     }
 
 private:
-    mutable std::mutex mtx;
     std::queue<T> queue;
+    std::mutex mtx;
     std::condition_variable cv;
 };
+
+#endif // SAFEQUEUE_H

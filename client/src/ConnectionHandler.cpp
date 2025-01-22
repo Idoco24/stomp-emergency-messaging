@@ -18,34 +18,55 @@ ConnectionHandler::~ConnectionHandler() {
 bool ConnectionHandler::connect() {
     std::cout << "Starting connect to " << host_ << ":" << port_ << std::endl;
     try {
-        tcp::endpoint endpoint(boost::asio::ip::address::from_string(host_), port_); // the server endpoint
+        tcp::endpoint endpoint(boost::asio::ip::address::from_string(host_), port_);
         boost::system::error_code error;
+
+        // Establish connection
         socket_.connect(endpoint, error);
-        if (error)
-            throw boost::system::system_error(error);
-    }
-    catch (std::exception &e) {
+        if (error) throw boost::system::system_error(error);
+
+        // Set the socket to non-blocking mode
+        socket_.non_blocking(true);
+    } catch (std::exception &e) {
         std::cerr << "Connection failed (Error: " << e.what() << ')' << std::endl;
         return false;
     }
-    // std::cout << "Connection established" << std::endl;
     return true;
 }
 
 bool ConnectionHandler::getBytes(char bytes[], unsigned int bytesToRead) {
     size_t tmp = 0;
     boost::system::error_code error;
+    auto start = std::chrono::steady_clock::now();
+    const auto timeout = std::chrono::seconds(1); // Set a timeout duration
+
     try {
-        while (!error && bytesToRead > tmp) {
-            tmp += socket_.read_some(boost::asio::buffer(bytes + tmp, bytesToRead - tmp), error);
+        while (bytesToRead > tmp) {
+            size_t bytesRead = socket_.read_some(boost::asio::buffer(bytes + tmp, bytesToRead - tmp), error);
+
+            if (error == boost::asio::error::would_block) {
+                // No data available, retry later
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+                // Check for timeout
+                auto now = std::chrono::steady_clock::now();
+                if (now - start > timeout) {
+                    return false;
+                }
+                continue;
+            } else if (error) {
+                std::cerr << "Error reading bytes: " << error.message() << std::endl; // Debug statement
+                throw boost::system::system_error(error);
+            }
+
+            tmp += bytesRead;
+            // std::cout << "Bytes read: " << bytesRead << ", Total bytes read: " << tmp << std::endl; // Debug statement
         }
-        if (error)
-            throw boost::system::system_error(error);
     } catch (std::exception &e) {
         std::cerr << "recv failed (Error: " << e.what() << ')' << std::endl;
         return false;
     }
-    //std::cout << "Received bytes: " << std::string(bytes, bytesToRead) << std::endl; // Debug print
+
     return true;
 }
 
@@ -68,36 +89,45 @@ bool ConnectionHandler::sendBytes(const char bytes[], int bytesToWrite) {
 
 bool ConnectionHandler::getLine(std::string &line) {
     //std::cout << "Attempting to get line" << std::endl;
+    // return getFrameAscii(line, '\0');
     return getFrameAscii(line, '\n');
 }
 
 bool ConnectionHandler::sendLine(std::string &line) {
     //std::cout << "Attempting to send line: " << line << std::endl;
-    return sendFrameAscii(line, '\n');
+    return sendFrameAscii(line, '\0');
+    // return sendFrameAscii(line, '\n');
 }
 
 bool ConnectionHandler::getFrameAscii(std::string &frame, char delimiter) {
     char ch;
-    // Stop when we encounter the null character.
-    // Notice that the null character is not appended to the frame string.
-    frame.clear();
+    auto start = std::chrono::steady_clock::now();
+    const auto timeout = std::chrono::seconds(1); // Set a timeout duration
     try {
         do {
-            if (!getBytes(&ch, 1)) {
+            if (!getBytes(&ch, 1)) {				
                 return false;
             }
-            if (ch == '\0') { // Found end of STOMP frame
-                //std::cout << "End of frame detected" << std::endl;
+            if (ch == '\0') {
+                // std::cout << "Null character received, ending frame" << std::endl;
                 return true;
             }
-            if (ch != '\0')
-                frame.append(1, ch);
+
+            frame.append(1, ch);
+            // std::cout << "Received character: " << ch << std::endl;
+
+            // Check for timeout
+            auto now = std::chrono::steady_clock::now();
+            if (now - start > timeout) {
+                return false;
+            }
         } while (delimiter != ch);
+
+        // std::cout << "Delimiter received, frame complete" << std::endl;
     } catch (std::exception &e) {
         std::cerr << "recv failed2 (Error: " << e.what() << ')' << std::endl;
         return false;
     }
-    //std::cout << "Received frame: " << frame << std::endl; // Debug print
     return true;
 }
 
@@ -105,8 +135,8 @@ bool ConnectionHandler::sendFrameAscii(const std::string &frame, char delimiter)
     //std::cout << "Sending frame: " << frame << std::endl;
     bool result = sendBytes(frame.c_str(), frame.length());
     if (!result) return false;
-    // return sendBytes(&delimiter, 1);
-    return result;
+    return sendBytes(&delimiter, 1);
+    // return result;
 }
 
 // Close down the connection properly.

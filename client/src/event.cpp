@@ -1,5 +1,6 @@
 #include "../include/event.h"
 #include "../include/json.hpp"
+#include "../include/keyboardInput.h"
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -8,7 +9,13 @@
 #include <sstream>
 #include <cstring>
 
-#include "../include/keyboardInput.h"
+void Event::split_str(const std::string &str, char delimiter, std::vector<std::string> &out) {
+    std::stringstream ss(str);
+    std::string token;
+    while (std::getline(ss, token, delimiter)) {
+        out.push_back(token);
+    }
+}
 
 using namespace std;
 using json = nlohmann::json;
@@ -22,17 +29,6 @@ Event::Event(std::string channel_name, std::string city, std::string name, int d
 
 Event::~Event()
 {
-}
-
-
-//Split str by delimiter and put the result in out
-
-void Event::split_str(const std::string &str, char delimiter, std::vector<std::string> &out) {
-    std::stringstream ss(str);
-    std::string item;
-    while (std::getline(ss, item, delimiter)) {
-        out.push_back(item);
-    }
 }
 
 void Event::setEventOwnerUser(std::string setEventOwnerUser) {
@@ -73,19 +69,6 @@ const std::string &Event::get_description() const
     return this->description;
 }
 
-std::string Event::toString() const {
-    std::ostringstream oss;
-    oss << "city: " << city << "\n"
-        << "event name: " << name << "\n"
-        << "date time: " << date_time << "\n"
-        << "general information:\n";
-    for (const auto& info : general_information) {
-        oss<< "\t" << info.first << ": " << info.second << "\n";
-    }
-    oss << "description:\n" << description << "\n";
-    return oss.str();
-}
-
 Event::Event(const std::string &frame_body): channel_name(""), city(""), 
                                              name(""), date_time(0), description(""), general_information(),
                                              eventOwnerUser("")
@@ -110,6 +93,10 @@ Event::Event(const std::string &frame_body): channel_name(""), city(""),
             if(key == "channel name") {
                 channel_name = val;
             }
+            if (key == "destination") {
+                channel_name = val.substr(1);
+            }
+            else
             if(key == "city") {
                 city = val;
             }
@@ -130,7 +117,7 @@ Event::Event(const std::string &frame_body): channel_name(""), city(""),
                 description = eventDescription;
             }
 
-            if(inGeneralInformation) {
+            if(inGeneralInformation && key != "description") {
                 general_information_from_string[key.substr(1)] = val;
             }
         }
@@ -145,7 +132,6 @@ names_and_events parseEventsFile(std::string json_path)
 
     std::string channel_name = data["channel_name"];
 
-    // run over all the events and convert them to Event objects
     std::vector<Event> events;
     for (auto &event : data["events"])
     {
@@ -167,4 +153,19 @@ names_and_events parseEventsFile(std::string json_path)
     names_and_events events_and_names{channel_name, events};
 
     return events_and_names;
+}
+
+std::string Event::toString() const {
+    std::ostringstream oss;
+    oss << "destination:/"<< channel_name <<"\n\n"
+        << "user: " << eventOwnerUser << "\n"
+        << "city: " << city << "\n"
+        << "event name: " << name << "\n"
+        << "date time: " << date_time << "\n"
+        << "general information:\n";
+    for (const auto& info : general_information) {
+        oss<< "\t" << info.first << ": " << info.second << "\n";
+    }
+    oss << "description:\n" << description << "\n";
+    return oss.str();
 }
