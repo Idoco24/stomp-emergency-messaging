@@ -27,7 +27,7 @@
 
 # # End of file
 
-all : clean compile link clear run
+all : clean compile link run
 
 clean:
 	rm -f bin/*.o
@@ -42,9 +42,8 @@ link:
 	g++ -o bin/StompClient bin/ConnectionHandler.o bin/event.o bin/StompClient.o bin/StompProtocol.o -lpthread
 
 run:
+	clear
 	./bin/StompClient
 
-clear:
-	clear
 
 .PHONY: clean compile link run

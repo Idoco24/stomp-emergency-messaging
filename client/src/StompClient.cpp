@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
                             stompProtocol->processFrame(fullresponse);
                             log = true;
                         } else {
-                            std::cout << "Error: " << fullresponse << std::endl;
+                            stompProtocol->processFrame(fullresponse);
                         }
                     }
                 }
@@ -106,13 +106,13 @@ int main(int argc, char *argv[]) {
                     // handler = nullptr;
                     // stompProtocol = nullptr;
                     // log = false;
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
                 }else if (line.find("summary")!= std::string::npos){
                     std::istringstream iss(line);
                     std::string command, channel_name, user_send, outJson;
                     iss >> command >> channel_name >> user_send >> outJson;
                     if (channel_name.empty() || user_send.empty()) {
-                        std::cout << "Usage: summary {channel name} {user} {filePath}" << std::endl;
+                        std::cout << "Usage: summary {channel name} {user} {file}" << std::endl;
                     }else{
                         std::vector<Event> eventus = stompProtocol->getEvents(channel_name, user_send);
                         stompProtocol->createSummary(channel_name, user_send, eventus, outJson);
@@ -140,7 +140,7 @@ int main(int argc, char *argv[]) {
                         std::vector<Event> events = mappy.events;
                         // std::cout << "Channel sub id: " << stompProtocol->getSubscriptionId(channel_name) << std::endl;
 
-                        if (stompProtocol->getSubscriptionId(channel_name) == 0){
+                        if (!stompProtocol->isSubscribed(channel_name)){
                             std::cout << "You are not registerd to channel " << channel_name << std::endl;
                             continue;
                         }
@@ -159,9 +159,9 @@ int main(int argc, char *argv[]) {
                     }
                 }
                  else {
-                    std::cout << "Unknown command" << std::endl;
+                    std::cout << "Illegal command, please try a different one" << std::endl;
                 }
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
             }
         }
@@ -179,8 +179,9 @@ int main(int argc, char *argv[]) {
                 // currentStompProtocol = stompProtocol;
             }
 
+
             if (!handler || !stompProtocol) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 continue;
             }
 
@@ -214,7 +215,8 @@ int main(int argc, char *argv[]) {
                 
                 // if (!messageQueue.isEmpty()) {
                 // }
-            } 
+                
+            }
 
         // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         }

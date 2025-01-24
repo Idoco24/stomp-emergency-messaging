@@ -2,6 +2,7 @@ package bgu.spl.net.srv;
 
 import bgu.spl.net.api.MessageEncoderDecoder;
 import bgu.spl.net.api.MessagingProtocol;
+import bgu.spl.net.impl.stomp.ConnectionsImpl;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.ClosedSelectorException;
@@ -22,6 +23,7 @@ public class Reactor<T> implements Server<T> {
 
     private Thread selectorThread;
     private final ConcurrentLinkedQueue<Runnable> selectorTasks = new ConcurrentLinkedQueue<>();
+    private Connections<T> connections;
 
     public Reactor(
             int numThreads,
@@ -33,6 +35,7 @@ public class Reactor<T> implements Server<T> {
         this.port = port;
         this.protocolFactory = protocolFactory;
         this.readerFactory = readerFactory;
+        this.connections = new ConnectionsImpl<>();
     }
 
     @Override
@@ -40,7 +43,7 @@ public class Reactor<T> implements Server<T> {
 	selectorThread = Thread.currentThread();
         try (Selector selector = Selector.open();
                 ServerSocketChannel serverSock = ServerSocketChannel.open()) {
-
+            
             this.selector = selector; //just to be able to close
 
             serverSock.bind(new InetSocketAddress(port));
@@ -97,10 +100,12 @@ public class Reactor<T> implements Server<T> {
         SocketChannel clientChan = serverChan.accept();
         clientChan.configureBlocking(false);
         final NonBlockingConnectionHandler<T> handler = new NonBlockingConnectionHandler<>(
+                connections,
                 readerFactory.get(),
                 protocolFactory.get(),
                 clientChan,
                 this);
+
         clientChan.register(selector, SelectionKey.OP_READ, handler);
     }
 

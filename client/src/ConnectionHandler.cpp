@@ -28,7 +28,7 @@ bool ConnectionHandler::connect() {
         // Set the socket to non-blocking mode
         socket_.non_blocking(true);
     } catch (std::exception &e) {
-        std::cerr << "Connection failed (Error: " << e.what() << ')' << std::endl;
+        std::cerr << "Connection failed (Error: " << e.what() << ')' << "\nCannot connecto to " << host_ <<':' << port_ << "please try to login again" << std::endl;
         return false;
     }
     return true;
@@ -38,7 +38,7 @@ bool ConnectionHandler::getBytes(char bytes[], unsigned int bytesToRead) {
     size_t tmp = 0;
     boost::system::error_code error;
     auto start = std::chrono::steady_clock::now();
-    const auto timeout = std::chrono::seconds(1); // Set a timeout duration
+    const auto timeout = std::chrono::milliseconds(50); // Set a timeout duration
 
     try {
         while (bytesToRead > tmp) {
@@ -64,7 +64,8 @@ bool ConnectionHandler::getBytes(char bytes[], unsigned int bytesToRead) {
         }
     } catch (std::exception &e) {
         std::cerr << "recv failed (Error: " << e.what() << ')' << std::endl;
-        return false;
+        std::cout<< "terminate called without an active exception" << std::endl;
+        std::abort(); // Exit the program
     }
 
     return true;

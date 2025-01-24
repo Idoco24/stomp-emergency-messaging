@@ -31,6 +31,8 @@ public:
         subscriptions[channelName] = subscription_id;
     }
     
+    bool isSubscribed(const std::string& channel_name);
+
     int getSubscriptionId(const std::string& channel_name) {
         return subscriptions[channel_name];
     }

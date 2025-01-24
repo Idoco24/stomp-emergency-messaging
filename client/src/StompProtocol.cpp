@@ -24,6 +24,11 @@ std::string StompProtocol::createConnectFrame(const std::string& host, const std
 }
 
 std::string StompProtocol::createSubscribeFrame(const std::string& destination, int id, int receipt) {
+
+    if (subscriptions.find(destination) != subscriptions.end()) {
+        id = subscriptions[destination];
+    }
+    
     std::ostringstream frame;
     frame << "SUBSCRIBE"<< "\n"
         //   << "destination:/" << destination << "\n"
@@ -31,7 +36,7 @@ std::string StompProtocol::createSubscribeFrame(const std::string& destination, 
           << "id:" << id << "\n"
           << "receipt:" << receipt << "\n\n";
         //   << '\0';
-
+    
     subscriptions[destination] = id;
     receipts[receipt] = "join " + destination;
     
@@ -41,9 +46,17 @@ std::string StompProtocol::createSubscribeFrame(const std::string& destination, 
     return frame.str();
 }
 
+bool StompProtocol::isSubscribed(const std::string& channel_name) {
+    if (subscriptions.find(channel_name) == subscriptions.end()) {
+        return false;
+    }
+    return true;
+
+}
+
 std::string StompProtocol::createUnsubscribeFrame(const std::string channel_name, int receipt) {
     if (subscriptions.find(channel_name) == subscriptions.end()) {
-        std::cerr << "Error: Channel " << channel_name << " not found" << std::endl;
+        std::cout << "you are not subscribed to channel " << channel_name << std::endl;
         return "";
     }
 
@@ -96,6 +109,11 @@ std::string StompProtocol::createDisconnectFrame(int receipt) {
 }
 
 void StompProtocol::createSummary(const std::string& channel_name, const std::string& user, const std::vector<Event>& events, std::string& outpath) {
+    if (subscriptions.find(channel_name) == subscriptions.end()) {
+        std::cout << "You are not subscribed to channel " << channel_name << std::endl;
+        return;
+    }
+    
     std::ofstream outFile(outpath);
     if (!outFile.is_open()) {
         std::cerr << "Unable to open file for writing: " << outpath << std::endl;
@@ -121,22 +139,29 @@ void StompProtocol::createSummary(const std::string& channel_name, const std::st
     }
 
     outFile << "Total: " << totalEvents << "\n";
-    outFile << "active: " << activeCount << "\n";
-    outFile << "forces arrival at scene: " << forcesArrivalCount << "\n\n";
+    if (activeCount != 0 ) {
+        outFile << "active: " << activeCount << "\n";
+    }else{
+        outFile << "\n";
+    }
+    if (forcesArrivalCount != 0) {
+        outFile << "forces arrival at scene: " << forcesArrivalCount << "\n";
+    }else {
+        outFile << "\n";
+    }
 
     outFile << "Event Reports:\n\n";
 
     for (const auto& event : events) {
         outFile << epochToDate(event.get_date_time()) << " - " << event.get_name() << " - " << event.get_city() << ":\n";
-        outFile << event.get_description() << "\n\n";
+        outFile << event.get_description() << "\n";
     }
 
     outFile.close();
-    std::cout << "Summary written to " << outpath << std::endl;
+    // std::cout << "Summary written to " << outpath << std::endl;
 }
 
 void StompProtocol::processFrame(const std::string& frame) {
-    // std::cout << "*************************\n[DEBUG] Processing frame:\n" << frame <<"\n*************************" << std::endl;
     if (frame.find("CONNECTED") != std::string::npos) {
         connected = true;
         std::cout << "Login successful" << std::endl;
@@ -158,15 +183,12 @@ void StompProtocol::processFrame(const std::string& frame) {
 
         else if (command.find("exit") != std::string::npos) {
             std::string channel_name = command.substr(5);
-            subscriptions.erase(channel_name);
+            // subscriptions.erase(channel_name);
             std::cout << "Exited from " << channel_name << std::endl;
         }
         else if (command.find("join") != std::string::npos) {
             std::string channel_name = command.substr(5);
             std::cout << "Joined channel " << channel_name << std::endl;
-        }
-        else {
-            std::cout << "Receipt received for command: " << command << std::endl;
         }
     }else if (frame.find("MESSAGE") != std::string::npos) {
         Event event(frame);
@@ -176,16 +198,13 @@ void StompProtocol::processFrame(const std::string& frame) {
             recordedEvents[event.get_channel_name()] = std::vector<Event>();
         }
         recordedEvents[event.get_channel_name()].push_back(event);
-        // std::cout << "Received event:\n" << event.toString() << std::endl;
     } 
 
     if (frame.find("ERROR") != std::string::npos) {
-        std::cerr << "Error From Server: " << frame << std::endl;
-        // connectionHandler.close();
-        // throw std::runtime_error("Error from server");
+        std::cout << "ERROR FROM THE SERVER:\n\n" << frame << std::endl;
+        connectionHandler.close();
+        connected = false;
+       std::cout<< "terminate called without an active exception" << std::endl;
+        std::abort();
     }
-    // else {
-    //     std::cout << "Received frame: " << frame << std::endl;
-
-    // }
 }

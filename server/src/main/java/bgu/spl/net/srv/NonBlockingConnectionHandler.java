@@ -3,6 +3,7 @@ package bgu.spl.net.srv;
 import bgu.spl.net.api.MessageEncoderDecoder;
 import bgu.spl.net.api.MessagingProtocol;
 
+import bgu.spl.net.impl.stomp.ConnectionsImpl;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
@@ -20,8 +21,11 @@ public class NonBlockingConnectionHandler<T> implements ConnectionHandler<T> {
     private final Queue<ByteBuffer> writeQueue = new ConcurrentLinkedQueue<>();
     private final SocketChannel chan;
     private final Reactor reactor;
+    private boolean alreadyUp = false;
+    private Connections<T> connections;
 
     public NonBlockingConnectionHandler(
+            Connections<T> connections,
             MessageEncoderDecoder<T> reader,
             MessagingProtocol<T> protocol,
             SocketChannel chan,
@@ -30,14 +34,20 @@ public class NonBlockingConnectionHandler<T> implements ConnectionHandler<T> {
         this.encdec = reader;
         this.protocol = protocol;
         this.reactor = reactor;
+        this.connections = connections;
     }
 
     public Runnable continueRead() {
         ByteBuffer buf = leaseBuffer();
-
         boolean success = false;
         try {
-            success = chan.read(buf) != -1;
+            if (chan.isOpen() && chan.isConnected()) {
+                success = chan.read(buf) != -1;
+            }
+            else{
+                close();
+                return null;
+            }
         } catch (IOException ex) {
             ex.printStackTrace();
         }
@@ -49,6 +59,13 @@ public class NonBlockingConnectionHandler<T> implements ConnectionHandler<T> {
                     while (buf.hasRemaining()) {
                         T nextMessage = encdec.decodeNextByte(buf.get());
                         if (nextMessage != null) {
+                            if(!alreadyUp){
+                                int connectionId = chan.socket().getPort();
+                        
+                                connections.addConnection(connectionId, this);
+                                this.getProtocol().start(connectionId, connections);
+                                alreadyUp = true;
+                            }
                             T response = protocol.process(nextMessage);
                             if (response != null) {
                                 writeQueue.add(ByteBuffer.wrap(encdec.encode(response)));
@@ -69,13 +86,16 @@ public class NonBlockingConnectionHandler<T> implements ConnectionHandler<T> {
     }
 
     public void close() {
-        try {
-            chan.close();
-        } catch (IOException ex) {
-            ex.printStackTrace();
+        if (!isClosed()) {
+            try {
+                chan.close();
+                // System.out.println("[DEBUG] Connection closed safely.");
+            } catch (IOException e) {
+                System.out.println("[ERROR] Closing connection failed: " + e.getMessage());
+            }
         }
     }
-
+    
     public boolean isClosed() {
         return !chan.isOpen();
     }
@@ -84,11 +104,13 @@ public class NonBlockingConnectionHandler<T> implements ConnectionHandler<T> {
         while (!writeQueue.isEmpty()) {
             try {
                 ByteBuffer top = writeQueue.peek();
+                if (top!= null){
                 chan.write(top);
-                if (top.hasRemaining()) {
-                    return;
-                } else {
-                    writeQueue.remove();
+                    if (top.hasRemaining()) {
+                        return;
+                    } else {
+                        writeQueue.remove();
+                    }
                 }
             } catch (IOException ex) {
                 ex.printStackTrace();
@@ -97,8 +119,8 @@ public class NonBlockingConnectionHandler<T> implements ConnectionHandler<T> {
         }
 
         if (writeQueue.isEmpty()) {
-            if (protocol.shouldTerminate()) close();
-            else reactor.updateInterestedOps(chan, SelectionKey.OP_READ);
+            reactor.updateInterestedOps(chan, SelectionKey.OP_READ);
+            // if (protocol.shouldTerminate()) close();
         }
     }
 
@@ -118,6 +140,15 @@ public class NonBlockingConnectionHandler<T> implements ConnectionHandler<T> {
 
     @Override
     public void send(T msg) {
-        // TODO: Implement this
+        
+        // System.out.println("Message to encode " + msg);
+        
+        writeQueue.add(ByteBuffer.wrap(encdec.encode(msg)));
+        reactor.updateInterestedOps(chan, SelectionKey.OP_READ | SelectionKey.OP_WRITE);
+
+    }
+
+    public MessagingProtocol<T> getProtocol() {
+        return protocol;
     }
 }

@@ -14,15 +14,15 @@ public class StompServer {
         }
         int port = Integer.parseInt(args[0]);
         String serverType = args[1];
-        System.out.println("Server port: " + port);
-        System.out.println("Server type: " + serverType);
-//        if (serverType.equals("tpc")){
-//            Server.threadPerClient(port, StompMessagingProtocol::new, StompMessageEncoderDecoder::new).serve();
-//        } else if (serverType.equals("reactor")){
-//            Server.reactor(Runtime.getRuntime().availableProcessors(), port, StompMessagingProtocol::new, StompMessageEncoderDecoder::new).serve();
-//        } else {
-//            System.out.println("Unknown server type");
-//            System.exit(1);
-//        }
+       if (serverType.equals("tpc")){
+           Server.threadPerClient(port, StompProtocolImpl::new, StompMessageEncodeDecoderImpl::new).serve();
+        
+       } else if (serverType.equals("reactor")){
+           Server.reactor(4, port, StompProtocolImpl::new, StompMessageEncodeDecoderImpl::new).serve();
+       
+        } else {
+           System.out.println("Unknown server type");
+           System.exit(1);
+       }
     }
 }
