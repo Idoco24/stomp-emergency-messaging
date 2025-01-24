@@ -5,7 +5,6 @@
 #include <fstream>
 #include "../include/ConnectionHandler.h"
 #include "../include/StompProtocol.h"
-#include "../include/keyboardInput.h"
 #include "../include/SafeQueue.h"
 
 ConnectionHandler* login(const std::string& host_port, const std::string& username, const std::string& password);
@@ -215,7 +214,6 @@ int main(int argc, char *argv[]) {
                 
                 // if (!messageQueue.isEmpty()) {
                 // }
-                
             } 
 
         // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
