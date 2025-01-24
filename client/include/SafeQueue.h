@@ -8,7 +8,7 @@
 template <typename T>
 class SafeQueue {
 public:
-    SafeQueue() = default;
+    SafeQueue() : queue(), mtx(), cv() {}
     ~SafeQueue() = default;
 
     // Enqueues a value into the queue

@@ -17,7 +17,7 @@ public class StompProtocolImpl<T> implements StompMessagingProtocol<T> {
 
     @Override
     public T process(T message) {
-        System.out.println(message);
+        // System.out.println(message); // Debugging message received
         String myMessage = (String) message;
         String[] lines = myMessage.split("\n");
         String command = lines[0];
@@ -51,13 +51,27 @@ public class StompProtocolImpl<T> implements StompMessagingProtocol<T> {
     }
 
     private void handleConnect(String[] lines) {
-        String version = getHeaderValue(lines[1]);
-        String host = getHeaderValue(lines[2]);
-        String user = getHeaderValue(lines[3]);
-        String pass = getHeaderValue(lines[4]);
-
         String frameToSend;
         String quicky= "malformed frame received";
+        String version = null;
+        String host = null;
+        String user = null;
+        String pass = null;
+
+        for (String line : lines){
+            if (line.contains("accept-version")){
+                version = getHeaderValue(line);
+            }
+            else if (line.contains("host")){
+                host = getHeaderValue(line);
+            }
+            else if (line.contains("login")){
+                user = getHeaderValue(line);
+            }
+            else if (line.contains("passcode")){
+                pass = getHeaderValue(line);
+            }
+        }
         
         if (!"1.2".equals(version)){
             if (version == null){

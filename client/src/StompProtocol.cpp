@@ -9,7 +9,7 @@
 using json = nlohmann::json;
 
 StompProtocol::StompProtocol(ConnectionHandler& connectionHandler) 
-    : connectionHandler(connectionHandler), connected(false), subscriptions(), receipts() {}
+    : connectionHandler(connectionHandler), connected(false), subscriptions(), receipts(), recordedEvents() {}
 
 std::string StompProtocol::createConnectFrame(const std::string& host, const std::string& login, const std::string& passcode) {
     std::ostringstream frame;

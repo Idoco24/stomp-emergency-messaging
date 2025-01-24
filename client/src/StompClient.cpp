@@ -216,11 +216,11 @@ int main(int argc, char *argv[]) {
                 // if (!messageQueue.isEmpty()) {
                 // }
                 
-            }
+            } 
 
         // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         }
-        std::cout << "[DEBUG] Exiting socket thread" << std::endl;
+        // std::cout << "[DEBUG] Exiting socket thread" << std::endl;
 
     });
 

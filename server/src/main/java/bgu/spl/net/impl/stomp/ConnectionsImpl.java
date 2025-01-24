@@ -12,7 +12,7 @@ public class ConnectionsImpl<T> implements Connections<T> {
     ConcurrentHashMap<String, String> users = new ConcurrentHashMap<>(); // username, password
     ConcurrentHashMap<Integer, String> ActiveUsers = new ConcurrentHashMap<>(); // username, connectionId
     private ConcurrentHashMap<Integer, ConcurrentHashMap<Integer, String>> subscriptions = new ConcurrentHashMap<>(); // connectionId, subscriptionId, channel
-    private int messageId = 0;
+    private int messageId = 0; // message id
     
     @Override
     public boolean send(int connectionId, T msg) {
@@ -33,7 +33,7 @@ public class ConnectionsImpl<T> implements Connections<T> {
             for (Integer connectionId : subscribers){
                 String messageWithId = addMessageIdToMessage(msg, this.messageId++);
                 send(connectionId, (T) messageWithId);
-                System.out.println(messageWithId);
+                // System.out.println(messageWithId);
             }
         }
     }
