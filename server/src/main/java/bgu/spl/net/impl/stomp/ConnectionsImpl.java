@@ -2,142 +2,73 @@ package bgu.spl.net.impl.stomp;
 
 import bgu.spl.net.srv.ConnectionHandler;
 import bgu.spl.net.srv.Connections;
-import java.util.Set;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class ConnectionsImpl<T> implements Connections<T> {
-    
-    ConcurrentHashMap<Integer, ConnectionHandler<T>> clients = new ConcurrentHashMap<>(); // connectionId, handler
-    ConcurrentHashMap<String, Set<Integer>> channels = new ConcurrentHashMap<>(); // channel, connectionId
-    ConcurrentHashMap<String, String> users = new ConcurrentHashMap<>(); // username, password
-    ConcurrentHashMap<Integer, String> ActiveUsers = new ConcurrentHashMap<>(); // username, connectionId
-    private ConcurrentHashMap<Integer, ConcurrentHashMap<Integer, String>> subscriptions = new ConcurrentHashMap<>(); // connectionId, subscriptionId, channel
-    private int messageId = 0; // message id
-    
-    @Override
-    public boolean send(int connectionId, T msg) {
+    private final Map<Integer, ConnectionHandler<T>> clients = new ConcurrentHashMap<>();
+    private final Map<String, String> users = new ConcurrentHashMap<>();
+    private final Map<Integer, String> activeUsers = new ConcurrentHashMap<>();
+    private final Map<Integer, Map<Integer, String>> subscriptions = new ConcurrentHashMap<>();
+    private final AtomicInteger nextMessageId = new AtomicInteger();
+
+    static String destination(String channel) { return channel.startsWith("/") ? channel : "/" + channel; }
+
+    public boolean send(int connectionId, T message) {
         ConnectionHandler<T> handler = clients.get(connectionId);
-        // System.out.println("attempting to send message to "+ handler);
-        
-        if (handler != null){
-            
-            handler.send(msg);
-            return true;
-        }
-        return false;
-    }
-    @Override
-    public void send(String channel, T msg) {
-        Set<Integer> subscribers = channels.get(channel);
-        if (subscribers != null) {
-            for (Integer connectionId : subscribers){
-                String messageWithId = addMessageIdToMessage(msg, this.messageId++);
-                send(connectionId, (T) messageWithId);
-                // System.out.println(messageWithId);
-            }
-        }
-    }
-
-    private String addMessageIdToMessage(T msg, int messageId) {
-        String message = (String) msg;
-        StringBuilder sb = new StringBuilder();
-        sb.append("MESSAGE\n");
-        sb.append("message-id:").append(messageId).append("\n");
-        sb.append(message.substring(8));    // Skip the initial "MESSAGE\n" part of the original message
-        
-        // System.out.println("message after edit\n"+sb.toString());
-        
-        return sb.toString();
-    }
-
-    
-    @Override
-    public String login(String username, String password, int connectionId){
-        // if the user is already logged in
-        if (users.containsKey(username)){
-            if(!users.get(username).equals(password)){
-                return "User " + username + "'s password is different than what you inserted";
-            }
-            else if(ActiveUsers.containsValue(username)){
-                return username + " is logged in somewhere else";
-            }
-        }
-        ActiveUsers.put(connectionId, username);
-        users.putIfAbsent(username, password);
-        return "CONNECTED\nversion:1.2\n";
-    }
-    @Override   
-    public void addConnection(int connectionId, ConnectionHandler<T> handler) {
-        clients.put(connectionId, handler);
-        // System.out.println("Connection added with id: " + connectionId + " and handler: " + handler);
-    }
-    
-    @Override
-    public void subscribe(String channel,int subscriptionId ,int connectionId) {
-        channels.putIfAbsent(channel, ConcurrentHashMap.newKeySet());
-        channels.get(channel).add(connectionId);
-
-        subscriptions.putIfAbsent(connectionId, new ConcurrentHashMap<>());
-        subscriptions.get(connectionId).put(subscriptionId, channel);
-        // System.out.println("User " + connectionId + " subscribed to channel " + channel);
-    }
-
-    @Override
-    public boolean unsubscribe(int subscriptionId, int connectionId) {
-        ConcurrentHashMap<Integer, String> userSubscriptions = subscriptions.get(connectionId);
-        
-        if (userSubscriptions == null || !userSubscriptions.containsKey(subscriptionId)) {
-            return false;
-        }
-
-        if (userSubscriptions != null) {
-            String channel = userSubscriptions.remove(subscriptionId);
-            if (channel != null) {
-                Set<Integer> subscribers = channels.get(channel);
-                if (subscribers != null) {
-                    subscribers.remove(connectionId);
-
-                    if (subscribers.isEmpty()) {
-                        channels.remove(channel);
-                        
-                    }
-                }
-            }
-        }
+        if (handler == null) return false;
+        handler.send(message);
         return true;
     }
 
-    @Override
-    public void disconnect(int connectionId) {
-        clients.remove(connectionId);
-        ConcurrentHashMap<Integer, String> userSubscriptions = subscriptions.remove(connectionId);
-        if (userSubscriptions != null) {
-            for (String channel : userSubscriptions.values()) {
-                Set<Integer> subscribers = channels.get(channel);
-                if (subscribers != null) {
-                    subscribers.remove(connectionId);
-
-                    if (subscribers.isEmpty()) {
-                        channels.remove(channel);
-                    }
+    @SuppressWarnings("unchecked")
+    public synchronized void send(String channel, T message) {
+        String target = destination(channel);
+        String frame = (String) message;
+        for (Map.Entry<Integer, Map<Integer, String>> client : subscriptions.entrySet()) {
+            for (Map.Entry<Integer, String> subscription : client.getValue().entrySet()) {
+                if (target.equals(subscription.getValue())) {
+                    String reply = "MESSAGE\nmessage-id:" + nextMessageId.getAndIncrement()
+                            + "\nsubscription:" + subscription.getKey() + "\n" + frame.substring("MESSAGE\n".length());
+                    send(client.getKey(), (T) reply);
                 }
             }
         }
     }
 
-    @Override
-    public void removeActiveUser(int connectionId){
-        if (ActiveUsers.get(connectionId) != null){
-            ActiveUsers.remove(connectionId);
-        }
+    public synchronized String login(String username, String password, int connectionId) {
+        if (activeUsers.containsKey(connectionId)) return "Already connected";
+        if (users.containsKey(username) && !users.get(username).equals(password)) return "Wrong password";
+        if (activeUsers.containsValue(username)) return "User already logged in";
+        users.putIfAbsent(username, password);
+        activeUsers.put(connectionId, username);
+        return "CONNECTED\nversion:1.2\n\n\0";
     }
 
-    @Override 
-    public boolean checkSubscription(String destination, int connectionId){
-        ConcurrentHashMap<Integer, String> userSubscriptions = subscriptions.get(connectionId);
-        if (userSubscriptions != null) {
-            return userSubscriptions.containsValue(destination);
-        }
-        return false;
+    public void addConnection(int connectionId, ConnectionHandler<T> handler) { clients.put(connectionId, handler); }
+
+    public synchronized void subscribe(String channel, int subscriptionId, int connectionId) {
+        Map<Integer, String> client = subscriptions.computeIfAbsent(connectionId, key -> new ConcurrentHashMap<>());
+        if (client.putIfAbsent(subscriptionId, destination(channel)) != null)
+            throw new IllegalArgumentException("Subscription id is already in use");
+    }
+
+    public synchronized boolean unsubscribe(int subscriptionId, int connectionId) {
+        Map<Integer, String> client = subscriptions.get(connectionId);
+        return client != null && client.remove(subscriptionId) != null;
+    }
+
+    public synchronized void disconnect(int connectionId) {
+        clients.remove(connectionId);
+        subscriptions.remove(connectionId);
+        activeUsers.remove(connectionId);
+    }
+
+    public synchronized void removeActiveUser(int connectionId) { activeUsers.remove(connectionId); }
+
+    public synchronized boolean checkSubscription(String channel, int connectionId) {
+        Map<Integer, String> client = subscriptions.get(connectionId);
+        return client != null && client.containsValue(destination(channel));
     }
 }

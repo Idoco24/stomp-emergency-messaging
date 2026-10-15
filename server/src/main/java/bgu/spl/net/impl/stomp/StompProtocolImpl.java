@@ -2,323 +2,123 @@ package bgu.spl.net.impl.stomp;
 
 import bgu.spl.net.api.StompMessagingProtocol;
 import bgu.spl.net.srv.Connections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
+/** Coursework STOMP subset: authentication, subscriptions, text messages and receipts. */
 public class StompProtocolImpl<T> implements StompMessagingProtocol<T> {
-
-    private boolean shouldTerminate = false;
+    private boolean shouldTerminate;
+    private boolean authenticated;
     private Connections<T> connections;
     private int connectionId;
 
-    @Override
     public void start(int connectionId, Connections<T> connections) {
-        this.connections = connections;
         this.connectionId = connectionId;
+        this.connections = connections;
     }
 
-    @Override
     public T process(T message) {
-        // System.out.println(message); // Debugging message received
-        String myMessage = (String) message;
-        String[] lines = myMessage.split("\n");
-        String command = lines[0];
-
-        switch (command) {
-            case "CONNECT":
-                handleConnect(lines);
-                break;
-            case "SUBSCRIBE":
-                handleSubscribe(lines);
-                break;
-            case "UNSUBSCRIBE":
-                handleUnsubscribe(lines);
-                break;
-            case "DISCONNECT":
-                handleDisconnect(lines);
-                break;
-            case "SEND":
-                handleSend(lines);
-                break;
-            default:
-                sendError("malformed frame received", "Unkown Frame Title" + command, lines);
+        if (shouldTerminate) return null;
+        Frame frame = null;
+        try {
+            frame = parse((String) message);
+            if (frame.command.equals("CONNECT") || frame.command.equals("STOMP")) {
+                if (authenticated) throw new IllegalArgumentException("Already connected");
+                connect(frame);
+            } else {
+                if (!authenticated) throw new IllegalArgumentException("CONNECT is required before other commands");
+                switch (frame.command) {
+                    case "SUBSCRIBE":
+                        connections.subscribe(required(frame, "destination"), id(frame), connectionId);
+                        receipt(frame);
+                        break;
+                    case "UNSUBSCRIBE":
+                        if (!connections.unsubscribe(id(frame), connectionId))
+                            throw new IllegalArgumentException("Unknown subscription id");
+                        receipt(frame);
+                        break;
+                    case "SEND":
+                        String destination = ConnectionsImpl.destination(required(frame, "destination"));
+                        if (!connections.checkSubscription(destination, connectionId))
+                            throw new IllegalArgumentException("Subscribe before sending to this destination");
+                        connections.send(destination, cast("MESSAGE\ndestination:" + destination + "\n\n" + frame.body + "\0"));
+                        receipt(frame);
+                        break;
+                    case "DISCONNECT":
+                        receipt(frame);
+                        terminate();
+                        break;
+                    default:
+                        throw new IllegalArgumentException("Unsupported command");
+                }
+            }
+        } catch (IllegalArgumentException error) {
+            String receipt = frame == null ? null : frame.headers.get("receipt");
+            // Never echo an incoming CONNECT frame or passcode in diagnostics.
+            String reply = "ERROR\nmessage:Invalid frame\n"
+                    + (receipt == null ? "" : "receipt-id:" + receipt + "\n")
+                    + "\n" + error.getMessage() + "\0";
+            connections.send(connectionId, cast(reply));
+            terminate();
         }
-
         return null;
     }
 
-    @Override
-    public boolean shouldTerminate() {
-        return shouldTerminate;
+    private void connect(Frame frame) {
+        if (!"1.2".equals(required(frame, "accept-version")))
+            throw new IllegalArgumentException("This coursework server supports version 1.2");
+        if (!"stomp.cs.bgu.ac.il".equals(required(frame, "host")))
+            throw new IllegalArgumentException("Unknown virtual host");
+        String result = connections.login(required(frame, "login"), required(frame, "passcode"), connectionId);
+        if (!result.startsWith("CONNECTED\n")) throw new IllegalArgumentException(result);
+        authenticated = true;
+        connections.send(connectionId, cast(result));
     }
 
-    private void handleConnect(String[] lines) {
-        String frameToSend;
-        String quicky= "malformed frame received";
-        String version = null;
-        String host = null;
-        String user = null;
-        String pass = null;
-
-        for (String line : lines){
-            if (line.contains("accept-version")){
-                version = getHeaderValue(line);
-            }
-            else if (line.contains("host")){
-                host = getHeaderValue(line);
-            }
-            else if (line.contains("login")){
-                user = getHeaderValue(line);
-            }
-            else if (line.contains("passcode")){
-                pass = getHeaderValue(line);
-            }
-        }
-        
-        if (!"1.2".equals(version)){
-            if (version == null){
-                frameToSend = "Did not contain a version header ,which is REQUIRED for message propagation.";
-                quicky = "missing header";
-            }
-            else {
-                frameToSend = "Version must be 1.2";
-                quicky = "Unkown version";
-            }
-        }else if (!"stomp.cs.bgu.ac.il".equals(host)){
-            
-            if (host == null){
-                frameToSend = "Did not contain a host header ,which is REQUIRED for message propagation.";
-                quicky = "missing header";
-            
-            }else {
-                frameToSend = "Host must be: stomp.cs.bgu.ac.il";
-                quicky = "Unkown host";
-            }
-
-        }else if (user == null){
-            frameToSend = "Did not contain a user header ,which is REQUIRED for message propagation.";
-            quicky = "missing header";
-        }   
-        else if (pass == null){
-            frameToSend = "Did not contain a pass header ,which is REQUIRED for message propagation.";
-            quicky = "missing header";
-        } else {
-            frameToSend = connections.login(user, pass, connectionId);
-        }
-        
-        if (frameToSend.contains("CONNECTED")){
-            connections.send(connectionId, (T) frameToSend);
-        }
-
-        else {
-
-            if (frameToSend.contains("password")){
-                quicky = "Password does not math UserName";
-            }
-            else if (frameToSend.contains("somewhere else")){
-                quicky = "User already logged in";
-            }
-            sendError(quicky, frameToSend, lines);
-        }
+    private void receipt(Frame frame) {
+        String value = frame.headers.get("receipt");
+        if (value != null) connections.send(connectionId, cast("RECEIPT\nreceipt-id:" + value + "\n\n\0"));
     }
 
-    private void handleSubscribe(String[] lines) {
-        String destination = null;
-        int subId = -1;
-        String receipt = null;
-
-        for (String line : lines){
-            if (line.contains("destination")){
-                destination = getHeaderValue(line);
-            }
-            else if (line.contains("id")){
-                try{
-                    subId = Integer.parseInt(getHeaderValue(line));
-                }
-                catch (Exception e){
-                    sendError("Invalid id", "recipt-id should be integer only, got " + getHeaderValue(line), lines);
-                    return;
-                }
-            }
-            else if (line.contains("receipt")){
-                receipt = getHeaderValue(line);
-            }
-        }
-
-        if (destination != null && subId != -1 && receipt != null){
-            connections.subscribe(destination, subId, connectionId);
-            sendReceipt(receipt);
-        }
-        else if (destination == null){
-            sendError("missing header", "Did not contain a destination header ,which is REQUIRED for message propagation.", lines);
-        }
-        else if (subId == -1){
-            sendError("missing header", "Did not contain a id header ,which is REQUIRED for message propagation.", lines);
-        }
-        else if (receipt == null){
-            sendError("missing header", "Did not contain a receipt header ,which is REQUIRED for message propagation.", lines);
-        }
-    }
-
-    private void handleUnsubscribe(String[] lines) {
-        int subId = -1;
-        String receipt = null;
-        
-        for (String line : lines) {
-            if (line.contains("id")) {
-                try {
-                    subId = Integer.parseInt(getHeaderValue(line));
-                } catch (Exception e) {
-                    sendError("Invalid id", "recipt-id should be integer only, got " + getHeaderValue(line), lines);
-                    return;
-                }
-            } else if (line.contains("receipt")) {
-                receipt = getHeaderValue(line);
-            }
-        }
-
-        if (subId != -1 && receipt != null){
-            boolean is_legit = connections.unsubscribe(subId, connectionId);
-            
-            if (!is_legit){
-                sendError("you are not subscribed to this channelId", "You tried to unsubscribe from a channel you are not subscribed to", lines);
-                return;
-            }
-            
-            sendReceipt(receipt);
-        }
-        else if (subId == -1){
-            sendError("missing header", "Did not contain a id header ,which is REQUIRED for message propagation.", lines);
-        }
-        else if (receipt == null){
-            sendError("missing header", "Did not contain a receipt header ,which is REQUIRED for message propagation.", lines);
-        }
-    }
-
-
-    private void handleSend(String[] lines) {
-        String destination = null;
-        String receiptId = null;
-    
-        for (String line : lines) {
-            if (line.startsWith("destination:")) {
-                destination = getHeaderValue(line).substring(1);
-            } else if (line.startsWith("receipt:")) {
-                receiptId = getHeaderValue(line);
-            }
-        }
-    
-        if (destination == null) {
-            String quicky = "missing header";
-            String description = "Missing required destination header in SEND command";
-            sendError(quicky, description, lines);
-            return;
-        }
-
-        if (!connections.checkSubscription(destination, connectionId)) {
-            String quicky = "missing subscription for client";
-            String description = "Client not subscribed to destination: " + destination;
-            sendError(quicky, description, lines);
-            return;
-        }
-    
-        String body = extractBody(lines);
-    
-        String messageFrame = "MESSAGE\n" +
-                              "subscription:" + connectionId + "\n" +
-                              "destination:/" + destination + "\n\n" +
-                              body + "\n\0";
-    
-        connections.send(destination, (T) messageFrame);
-    
-        if (receiptId != null) {
-            sendReceipt(receiptId);
-        }
-    }
-    
-    private String extractBody(String[] lines) {
-        StringBuilder bodyBuilder = new StringBuilder();
-        boolean bodyStarted = false;
-    
-        for (String line : lines) {
-            if (bodyStarted) {
-                bodyBuilder.append(line).append("\n");
-            } else if (line.isEmpty()) {
-                bodyStarted = true;
-            }
-        }
-    
-        return bodyBuilder.toString().trim();
-    }
-
-    private void handleDisconnect(String[] lines) {
-        String receipt = null;
-        for (String line : lines){
-            if (line.contains("receipt")){
-                receipt = getHeaderValue(line);
-            }
-        }
-        
-        if (receipt == null){
-            String quicky = "missing receipt header";
-            String description = "Did not contain a receipt header ,which is REQUIRED for message propagation.";
-            
-            sendError(quicky, description, lines);
-            return;
-        }
-
-        connections.removeActiveUser(connectionId);
-        sendReceipt(receipt);
-        connections.disconnect(connectionId);
+    private void terminate() {
         shouldTerminate = true;
-
-    }
-   
-    @SuppressWarnings("unchecked")
-    private void sendError(String quicky, String description ,String[] lines) {
-        StringBuilder errorFrame = new StringBuilder();
-        errorFrame.append("ERROR\n");
-    
-        // Add a message header with a short description of the error
-        errorFrame.append("message: ").append(quicky).append("\n");
-    
-        // Optionally add a receipt-id header if provided in the lines
-        for (String line : lines) {
-            if (line.startsWith("receipt:")) {
-                errorFrame.append("receipt-id:").append(getHeaderValue(line)).append("\n");
-                break;
-            }
-        }
-    
-        // Add the body of the error frame
-        errorFrame.append("\n");
-        errorFrame.append("The message:\n-----\n");
-        for (String line : lines) {
-            errorFrame.append(line).append("\n");
-        }
-        errorFrame.append("-----\n");
-        errorFrame.append(description).append("\n");
-        errorFrame.append("\u0000");
-        
-        String errorMessage = errorFrame.toString();
-
-        connections.send(connectionId, (T) errorMessage);
-
-        connections.removeActiveUser(connectionId);
+        authenticated = false;
+        // The socket handler flushes queued replies before closing the transport.
         connections.disconnect(connectionId);
-        shouldTerminate = true;
-
-
     }
 
+    public boolean shouldTerminate() { return shouldTerminate; }
 
     @SuppressWarnings("unchecked")
-    private void sendReceipt(String receipt) {
-        String frameToSend =    "RECEIPT\n"+
-                                "receipt-id:" + receipt + "\n\n\0";
-        
-        connections.send(connectionId, (T) frameToSend);
+    private T cast(String message) { return (T) message; }
+
+    private static String required(Frame frame, String key) {
+        String value = frame.headers.get(key);
+        if (value == null || value.isEmpty()) throw new IllegalArgumentException("Missing header: " + key);
+        return value;
     }
 
-    private String getHeaderValue(String header) {
-        return header.split(":")[1].trim();
+    private static int id(Frame frame) {
+        int id = Integer.parseInt(required(frame, "id"));
+        if (id < 0) throw new IllegalArgumentException("Subscription id must be non-negative");
+        return id;
     }
+
+    private static Frame parse(String message) {
+        int boundary = message.indexOf("\r\n\r\n");
+        int separatorLength = 4;
+        if (boundary < 0) { boundary = message.indexOf("\n\n"); separatorLength = 2; }
+        if (boundary < 0) throw new IllegalArgumentException("Missing header/body separator");
+        String[] lines = message.substring(0, boundary).split("\r?\n");
+        if (lines.length == 0 || lines[0].isEmpty()) throw new IllegalArgumentException("Missing command");
+        Map<String, String> headers = new LinkedHashMap<>();
+        for (int i = 1; i < lines.length; i++) {
+            int colon = lines[i].indexOf(':');
+            if (colon <= 0) throw new IllegalArgumentException("Malformed header");
+            headers.putIfAbsent(lines[i].substring(0, colon), lines[i].substring(colon + 1));
+        }
+        return new Frame(lines[0], headers, message.substring(boundary + separatorLength));
+    }
+
+    private record Frame(String command, Map<String, String> headers, String body) { }
 }

@@ -23,18 +23,20 @@ public class NonBlockingConnectionHandler<T> implements ConnectionHandler<T> {
     private final Reactor reactor;
     private boolean alreadyUp = false;
     private Connections<T> connections;
+    private final int connectionId;
 
     public NonBlockingConnectionHandler(
             Connections<T> connections,
             MessageEncoderDecoder<T> reader,
             MessagingProtocol<T> protocol,
             SocketChannel chan,
-            Reactor reactor) {
+            Reactor reactor, int connectionId) {
         this.chan = chan;
         this.encdec = reader;
         this.protocol = protocol;
         this.reactor = reactor;
         this.connections = connections;
+        this.connectionId = connectionId;
     }
 
     public Runnable continueRead() {
@@ -56,11 +58,10 @@ public class NonBlockingConnectionHandler<T> implements ConnectionHandler<T> {
             buf.flip();
             return () -> {
                 try {
-                    while (buf.hasRemaining()) {
+                    while (buf.hasRemaining() && !protocol.shouldTerminate()) {
                         T nextMessage = encdec.decodeNextByte(buf.get());
                         if (nextMessage != null) {
                             if(!alreadyUp){
-                                int connectionId = chan.socket().getPort();
                         
                                 connections.addConnection(connectionId, this);
                                 this.getProtocol().start(connectionId, connections);
@@ -86,6 +87,7 @@ public class NonBlockingConnectionHandler<T> implements ConnectionHandler<T> {
     }
 
     public void close() {
+        connections.disconnect(connectionId);
         if (!isClosed()) {
             try {
                 chan.close();
@@ -119,8 +121,8 @@ public class NonBlockingConnectionHandler<T> implements ConnectionHandler<T> {
         }
 
         if (writeQueue.isEmpty()) {
-            reactor.updateInterestedOps(chan, SelectionKey.OP_READ);
-            // if (protocol.shouldTerminate()) close();
+            if (protocol.shouldTerminate()) close();
+            else reactor.updateInterestedOps(chan, SelectionKey.OP_READ);
         }
     }
 

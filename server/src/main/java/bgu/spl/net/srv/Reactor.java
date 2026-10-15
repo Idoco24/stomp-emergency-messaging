@@ -24,6 +24,7 @@ public class Reactor<T> implements Server<T> {
     private Thread selectorThread;
     private final ConcurrentLinkedQueue<Runnable> selectorTasks = new ConcurrentLinkedQueue<>();
     private Connections<T> connections;
+    private final java.util.concurrent.atomic.AtomicInteger nextConnectionId = new java.util.concurrent.atomic.AtomicInteger();
 
     public Reactor(
             int numThreads,
@@ -86,10 +87,10 @@ public class Reactor<T> implements Server<T> {
     void updateInterestedOps(SocketChannel chan, int ops) {
         final SelectionKey key = chan.keyFor(selector);
         if (Thread.currentThread() == selectorThread) {
-            key.interestOps(ops);
+            if (key != null && key.isValid()) key.interestOps(ops);
         } else {
             selectorTasks.add(() -> {
-                key.interestOps(ops);
+                if (key != null && key.isValid()) key.interestOps(ops);
             });
             selector.wakeup();
         }
@@ -104,7 +105,7 @@ public class Reactor<T> implements Server<T> {
                 readerFactory.get(),
                 protocolFactory.get(),
                 clientChan,
-                this);
+                this, nextConnectionId.getAndIncrement());
 
         clientChan.register(selector, SelectionKey.OP_READ, handler);
     }

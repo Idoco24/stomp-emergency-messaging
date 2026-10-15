@@ -16,6 +16,7 @@ public abstract class BaseServer<T> implements Server<T> {
     private final Supplier<MessageEncoderDecoder<T>> encdecFactory;
     private ServerSocket sock;
     private Connections<T> connections;
+    private final java.util.concurrent.atomic.AtomicInteger nextConnectionId = new java.util.concurrent.atomic.AtomicInteger();
 
     public BaseServer(
             int port,
@@ -40,16 +41,16 @@ public abstract class BaseServer<T> implements Server<T> {
             while (!Thread.currentThread().isInterrupted()) {
 
                 Socket clientSock = serverSock.accept();
+                int connectionId = nextConnectionId.getAndIncrement();
                 
                 
                 
                 BlockingConnectionHandler<T> handler = new BlockingConnectionHandler<>(
                         clientSock,
                         encdecFactory.get(),
-                        protocolFactory.get());
+                        protocolFactory.get(), connections, connectionId);
                 
                 // System.out.println("client trying to connect " + connections);
-                int connectionId = clientSock.getPort();
                 connections.addConnection(connectionId, handler);
                 handler.getProtocol().start(connectionId, connections);
                 

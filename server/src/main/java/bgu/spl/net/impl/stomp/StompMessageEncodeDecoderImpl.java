@@ -13,6 +13,7 @@ public class StompMessageEncodeDecoderImpl implements MessageEncoderDecoder<Stri
 
     @Override
     public String decodeNextByte(byte nextByte) {
+        if (len == 0 && (nextByte == '\n' || nextByte == '\r')) return null;
         //notice that the top 128 ascii characters have the same representation as their utf-8 counterparts
         //this allow us to do the following comparison
         if (nextByte == '\0') {
