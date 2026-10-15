@@ -1,0 +1,15 @@
+{
+  "channel_name": "alerts",
+  "events": [
+    {
+      "event_name": "Training exercise",
+      "city": "Demo City",
+      "date_time": 1735689600,
+      "description": "Synthetic training event. No real emergency or personal data.",
+      "general_information": {
+        "active": true,
+        "forces_arrival_at_scene": false
+      }
+    }
+  ]
+}
