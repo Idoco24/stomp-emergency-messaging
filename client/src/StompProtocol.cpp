@@ -204,7 +204,7 @@ void StompProtocol::processFrame(const std::string& frame) {
         std::cout << "ERROR FROM THE SERVER:\n\n" << frame << std::endl;
         connectionHandler.close();
         connected = false;
-       std::cout<< "terminate called without an active exception" << std::endl;
+        std::cout<< "terminate called without an active exception" << std::endl;
         std::abort();
     }
 }

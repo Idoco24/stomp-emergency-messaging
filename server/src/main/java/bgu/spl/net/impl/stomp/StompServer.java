@@ -9,9 +9,17 @@ public class StompServer {
     
     public static void main(String[] args) {
         if (args.length != 2) {
-            System.out.println("Usage: StompServer <port> <reactor/tpc>");
+            System.out.println("you must supply two arguments: <port>, <type_of_server> - tpc / reactor");
             System.exit(1);
         }
+
+        String server_type = args[1];
+
+        if (!server_type.equals("tpc") && !server_type.equals("reactor")) {
+            System.out.println("you must supply on the second argument: <type_of_server> - tpc / reactor");
+            System.exit(1);
+        }
+
         int port = Integer.parseInt(args[0]);
         String serverType = args[1];
        if (serverType.equals("tpc")){

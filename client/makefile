@@ -39,11 +39,11 @@ compile: src/ConnectionHandler.cpp src/event.cpp src/StompClient.cpp src/StompPr
 	g++ -c -Wall -Weffc++ -g -std=c++11 -Iinclude src/StompProtocol.cpp -o bin/StompProtocol.o
 
 link:
-	g++ -o bin/StompClient bin/ConnectionHandler.o bin/event.o bin/StompClient.o bin/StompProtocol.o -lpthread
+	g++ -o bin/StompEMIClient bin/ConnectionHandler.o bin/event.o bin/StompClient.o bin/StompProtocol.o -lpthread
 
 run:
 	clear
-	./bin/StompClient
+	./bin/StompEMIClient
 
 
 .PHONY: clean compile link run
