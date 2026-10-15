@@ -7,7 +7,7 @@ import java.util.Map;
 
 /** Coursework STOMP subset: authentication, subscriptions, text messages and receipts. */
 public class StompProtocolImpl<T> implements StompMessagingProtocol<T> {
-    private boolean shouldTerminate;
+    private volatile boolean shouldTerminate;
     private boolean authenticated;
     private Connections<T> connections;
     private int connectionId;

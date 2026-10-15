@@ -85,6 +85,15 @@ def server(mode):
 
 
 class ProtocolIntegration(unittest.TestCase):
+    def test_reactor_closes_repeated_receipted_sessions(self):
+        with server('reactor') as port:
+            for iteration in range(20):
+                with self.subTest(iteration=iteration), Peer(port) as peer:
+                    self.assertEqual('CONNECTED', peer.login('repeat-user')[0])
+                    peer.send('DISCONNECT', {'receipt': str(iteration)})
+                    self.assertEqual(str(iteration), peer.receive()[1]['receipt-id'])
+                    self.assertEqual(b'', peer.socket.recv(1))
+
     def test_two_clients_route_utf8_and_recipient_subscription_ids(self):
         for mode in ('tpc', 'reactor'):
             with self.subTest(mode=mode), server(mode) as port, Peer(port) as a, Peer(port) as b:

@@ -46,13 +46,17 @@ Corrections include:
 
 ## Test coverage
 
-**13 JUnit tests** check routing/subscription IDs, login requirements, malformed
+**14 JUnit tests** check routing/subscription IDs, login requirements, malformed
 headers, colon-containing credentials, password redaction, session cleanup,
 duplicate/multiple subscription IDs, CRLF handling, body/header separation, UTF-8
-framing, inter-frame blank lines and null-terminated encoding.
+framing, inter-frame blank lines and null-terminated encoding. A deterministic
+handler test forces the selector to drain a DISCONNECT receipt before the protocol
+marks termination. It failed before the final close-wakeup correction and passes
+after it. The termination flag is also visible across selector/worker threads.
 
-**8 Python integration test methods** run real processes/sockets. Seven exercise
-both server modes; the delayed-frame client check uses a controlled fake server.
+**9 Python integration test methods** run real processes/sockets. Seven exercise
+both server modes; one repeats 20 reactor disconnects, and the delayed-frame client
+check uses a controlled fake server.
 The client workflow includes login, subscribe, JSON report, positive and negative
 username summaries, unsubscribe, logout and EOF. Network checks assert final
 receipts reach the client before closure and that disconnected usernames can log

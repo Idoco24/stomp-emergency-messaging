@@ -71,7 +71,7 @@ mvn --batch-mode --no-transfer-progress -f server/pom.xml verify
 make -C client
 ```
 
-The Java build runs 13 JUnit tests and creates an executable
+The Java build runs 14 JUnit tests and creates an executable
 `server/target/server-1.0.jar`. The C++ build produces
 `client/bin/StompEMIClient`. Building does not automatically launch the client.
 
@@ -150,11 +150,13 @@ python3 tests/integration_test.py
 ```
 
 The script launches and stops its own local servers on temporary ports and checks
-both `tpc` and `reactor`. Eight test methods cover real TCP routing, UTF-8 and
+both `tpc` and `reactor`. Nine test methods cover real TCP routing, UTF-8 and
 fragmented frames, recipient subscription IDs, unsubscribe/logout receipts,
 abrupt disconnect/relogin, bad credentials, unauthenticated commands, and the
 compiled C++ client's report/summary flow. A fake server also delays a CONNECTED
 frame beyond the client's polling interval to verify partial-frame retention.
+The reactor also goes through 20 consecutive receipted disconnects to check
+that session closure does not depend on the selector/worker scheduling order.
 
 All temporary servers and clients are stopped by the tests. If Java is not on
 PATH, set `JAVA` to its executable. `STOMP_CLIENT` can override the compiled client

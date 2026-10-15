@@ -75,6 +75,11 @@ public class NonBlockingConnectionHandler<T> implements ConnectionHandler<T> {
                         }
                     }
                 } finally {
+                    // A final reply may already have drained before process() set
+                    // termination. Wake the selector again so closure cannot be lost.
+                    if (protocol.shouldTerminate() && !isClosed()) {
+                        reactor.updateInterestedOps(chan, SelectionKey.OP_WRITE);
+                    }
                     releaseBuffer(buf);
                 }
             };
