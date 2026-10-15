@@ -1,154 +1,74 @@
 #include "../include/ConnectionHandler.h"
+#include <chrono>
+#include <thread>
 
-using boost::asio::ip::tcp;
-
-using std::cin;
-using std::cout;
-using std::cerr;
-using std::endl;
-using std::string;
-
-ConnectionHandler::ConnectionHandler(string host, short port) : host_(host), port_(port), io_service_(),
-                                                                socket_(io_service_) {}
-
-ConnectionHandler::~ConnectionHandler() {
-    close();
-}
+ConnectionHandler::ConnectionHandler(std::string host, unsigned short port)
+    : host_(host), port_(port), io_service_(), socket_(io_service_), pendingFrame_() { }
+ConnectionHandler::~ConnectionHandler() { close(); }
 
 bool ConnectionHandler::connect() {
-    std::cout << "Starting connect to " << host_ << ":" << port_ << std::endl;
     try {
-        tcp::endpoint endpoint(boost::asio::ip::address::from_string(host_), port_);
-        boost::system::error_code error;
-
-        // Establish connection
-        socket_.connect(endpoint, error);
-        if (error) throw boost::system::system_error(error);
-
-        // Set the socket to non-blocking mode
+        tcp::resolver resolver(io_service_);
+        boost::asio::connect(socket_, resolver.resolve(host_, std::to_string(port_)));
         socket_.non_blocking(true);
-    } catch (std::exception &e) {
-        std::cerr << "Connection failed (Error: " << e.what() << ')' << "\nCannot connecto to " << host_ <<':' << port_ << "please try to login again" << std::endl;
-        return false;
+        return true;
+    } catch (const std::exception& error) {
+        std::cerr << "Connection failed: " << error.what() << std::endl;
+        close(); return false;
     }
-    return true;
 }
 
-bool ConnectionHandler::getBytes(char bytes[], unsigned int bytesToRead) {
-    size_t tmp = 0;
-    boost::system::error_code error;
-    auto start = std::chrono::steady_clock::now();
-    const auto timeout = std::chrono::milliseconds(50); // Set a timeout duration
-
-    try {
-        while (bytesToRead > tmp) {
-            size_t bytesRead = socket_.read_some(boost::asio::buffer(bytes + tmp, bytesToRead - tmp), error);
-
-            if (error == boost::asio::error::would_block) {
-                // No data available, retry later
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
-                // Check for timeout
-                auto now = std::chrono::steady_clock::now();
-                if (now - start > timeout) {
-                    return false;
-                }
-                continue;
-            } else if (error) {
-                std::cerr << "Error reading bytes: " << error.message() << std::endl; // Debug statement
-                throw boost::system::system_error(error);
-            }
-
-            tmp += bytesRead;
-            // std::cout << "Bytes read: " << bytesRead << ", Total bytes read: " << tmp << std::endl; // Debug statement
+bool ConnectionHandler::getBytes(char bytes[], unsigned int count) {
+    unsigned int received = 0;
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
+    while (received < count && socket_.is_open()) {
+        boost::system::error_code error;
+        size_t amount = socket_.read_some(boost::asio::buffer(bytes + received, count - received), error);
+        if (error == boost::asio::error::would_block || error == boost::asio::error::try_again) {
+            if (std::chrono::steady_clock::now() >= deadline) return false;
+            std::this_thread::sleep_for(std::chrono::milliseconds(2)); continue;
         }
-    } catch (std::exception &e) {
-        std::cerr << "recv failed (Error: " << e.what() << ')' << std::endl;
-        std::cout<< "terminate called without an active exception" << std::endl;
-        std::abort(); // Exit the program
+        if (error || amount == 0) { close(); return false; }
+        received += static_cast<unsigned int>(amount);
     }
-
-    return true;
+    return received == count;
 }
 
-bool ConnectionHandler::sendBytes(const char bytes[], int bytesToWrite) {
-    int tmp = 0;
-    boost::system::error_code error;
-    try {
-        while (!error && bytesToWrite > tmp) {
-            tmp += socket_.write_some(boost::asio::buffer(bytes + tmp, bytesToWrite - tmp), error);
+bool ConnectionHandler::sendBytes(const char bytes[], int count) {
+    int sent = 0;
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (sent < count && socket_.is_open()) {
+        boost::system::error_code error;
+        size_t amount = socket_.write_some(boost::asio::buffer(bytes + sent, count - sent), error);
+        if (error == boost::asio::error::would_block || error == boost::asio::error::try_again) {
+            if (std::chrono::steady_clock::now() >= deadline) { close(); return false; }
+            std::this_thread::sleep_for(std::chrono::milliseconds(2)); continue;
         }
-        if (error)
-            throw boost::system::system_error(error);
-    } catch (std::exception &e) {
-        std::cerr << "send failed (Error: " << e.what() << ')' << std::endl;
-        return false;
+        if (error || amount == 0) { close(); return false; }
+        sent += static_cast<int>(amount);
     }
-    //std::cout << "Sent bytes: " << std::string(bytes, bytesToWrite) << std::endl; // Debug print
-    return true;
+    return sent == count;
 }
 
-bool ConnectionHandler::getLine(std::string &line) {
-    //std::cout << "Attempting to get line" << std::endl;
-    // return getFrameAscii(line, '\0');
-    return getFrameAscii(line, '\n');
-}
-
-bool ConnectionHandler::sendLine(std::string &line) {
-    //std::cout << "Attempting to send line: " << line << std::endl;
-    return sendFrameAscii(line, '\0');
-    // return sendFrameAscii(line, '\n');
-}
-
-bool ConnectionHandler::getFrameAscii(std::string &frame, char delimiter) {
-    char ch;
-    auto start = std::chrono::steady_clock::now();
-    const auto timeout = std::chrono::seconds(1); // Set a timeout duration
-    try {
-        do {
-            if (!getBytes(&ch, 1)) {				
-                return false;
-            }
-            if (ch == '\0') {
-                // std::cout << "Null character received, ending frame" << std::endl;
-                return true;
-            }
-
-            frame.append(1, ch);
-            // std::cout << "Received character: " << ch << std::endl;
-
-            // Check for timeout
-            auto now = std::chrono::steady_clock::now();
-            if (now - start > timeout) {
-                return false;
-            }
-        } while (delimiter != ch);
-
-        // std::cout << "Delimiter received, frame complete" << std::endl;
-    } catch (std::exception &e) {
-        std::cerr << "recv failed2 (Error: " << e.what() << ')' << std::endl;
-        return false;
+bool ConnectionHandler::getLine(std::string& line) { return getFrameAscii(line, '\n'); }
+bool ConnectionHandler::sendLine(std::string& line) { return sendFrameAscii(line, '\0'); }
+bool ConnectionHandler::getFrameAscii(std::string& frame, char delimiter) {
+    char next;
+    while (getBytes(&next, 1)) {
+        if (next == delimiter || next == '\0') {
+            frame.swap(pendingFrame_); pendingFrame_.clear(); return true;
+        }
+        pendingFrame_.push_back(next);
     }
-    return true;
+    // Keep partial data between polling calls; TCP may split a frame at any byte.
+    return false;
 }
-
-bool ConnectionHandler::sendFrameAscii(const std::string &frame, char delimiter) {
-    //std::cout << "Sending frame: " << frame << std::endl;
-    bool result = sendBytes(frame.c_str(), frame.length());
-    if (!result) return false;
-    return sendBytes(&delimiter, 1);
-    // return result;
+bool ConnectionHandler::sendFrameAscii(const std::string& frame, char delimiter) {
+    return sendBytes(frame.data(), static_cast<int>(frame.size())) && sendBytes(&delimiter, 1);
 }
-
-// Close down the connection properly.
 void ConnectionHandler::close() {
-    try {
-        socket_.close();
-    } catch (...) {
-        std::cout << "closing failed: connection already closed" << std::endl;
-    }
+    boost::system::error_code ignored;
+    socket_.shutdown(tcp::socket::shutdown_both, ignored);
+    socket_.close(ignored);
 }
-
-bool ConnectionHandler::isConnected() {
-    return socket_.is_open();
-}
+bool ConnectionHandler::isConnected() { return socket_.is_open(); }

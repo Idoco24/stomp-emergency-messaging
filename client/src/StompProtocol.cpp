@@ -9,9 +9,10 @@
 using json = nlohmann::json;
 
 StompProtocol::StompProtocol(ConnectionHandler& connectionHandler) 
-    : connectionHandler(connectionHandler), connected(false), subscriptions(), receipts(), recordedEvents() {}
+    : connectionHandler(connectionHandler), connected(false), username(), subscriptions(), receipts(), recordedEvents() {}
 
 std::string StompProtocol::createConnectFrame(const std::string& host, const std::string& login, const std::string& passcode) {
+    username = login;
     std::ostringstream frame;
     frame << "CONNECT\n"
           << "accept-version:1.2\n"
@@ -121,6 +122,7 @@ void StompProtocol::createSummary(const std::string& channel_name, const std::st
     }
 
     outFile << "Channel " << channel_name << "\n";
+    outFile << "User " << user << "\n";
     outFile << "Stats:\n";
 
     int totalEvents = events.size();
@@ -162,11 +164,11 @@ void StompProtocol::createSummary(const std::string& channel_name, const std::st
 }
 
 void StompProtocol::processFrame(const std::string& frame) {
-    if (frame.find("CONNECTED") != std::string::npos) {
+    if (frame.rfind("CONNECTED\n", 0) == 0) {
         connected = true;
         std::cout << "Login successful" << std::endl;
 
-    } else if (frame.find("RECEIPT") != std::string::npos) {
+    } else if (frame.rfind("RECEIPT\n", 0) == 0) {
         std::istringstream iss(frame);
         std::string header, receipt_line;
         iss >> header >> receipt_line;
@@ -183,14 +185,14 @@ void StompProtocol::processFrame(const std::string& frame) {
 
         else if (command.find("exit") != std::string::npos) {
             std::string channel_name = command.substr(5);
-            // subscriptions.erase(channel_name);
+            subscriptions.erase(channel_name);
             std::cout << "Exited from " << channel_name << std::endl;
         }
         else if (command.find("join") != std::string::npos) {
             std::string channel_name = command.substr(5);
             std::cout << "Joined channel " << channel_name << std::endl;
         }
-    }else if (frame.find("MESSAGE") != std::string::npos) {
+    }else if (frame.rfind("MESSAGE\n", 0) == 0) {
         Event event(frame);
 
         
@@ -200,11 +202,9 @@ void StompProtocol::processFrame(const std::string& frame) {
         recordedEvents[event.get_channel_name()].push_back(event);
     } 
 
-    if (frame.find("ERROR") != std::string::npos) {
+    if (frame.rfind("ERROR\n", 0) == 0) {
         std::cout << "ERROR FROM THE SERVER:\n\n" << frame << std::endl;
         connectionHandler.close();
         connected = false;
-        std::cout<< "terminate called without an active exception" << std::endl;
-        std::abort();
     }
 }

@@ -9,12 +9,13 @@ using boost::asio::ip::tcp;
 class ConnectionHandler {
 private:
 	const std::string host_;
-	const short port_;
+	const unsigned short port_;
 	boost::asio::io_service io_service_;   // Provides core I/O functionality
 	tcp::socket socket_;
+	std::string pendingFrame_;
 
 public:
-	ConnectionHandler(std::string host, short port);
+	ConnectionHandler(std::string host, unsigned short port);
 
 	virtual ~ConnectionHandler();
 

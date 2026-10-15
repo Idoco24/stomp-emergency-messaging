@@ -83,9 +83,9 @@ Event::Event(const std::string &frame_body): channel_name(""), city(""),
             split_str(line, ':', lineArgs);
             string key = lineArgs.at(0);
             string val;
-            if(lineArgs.size() == 2) {
-                val = lineArgs.at(1);
-            }
+            val = line.substr(line.find(':') + 1);
+            size_t first = val.find_first_not_of(" \t\r");
+            val = first == std::string::npos ? "" : val.substr(first);
             if(key == "user") {
                 eventOwnerUser = val;
             }

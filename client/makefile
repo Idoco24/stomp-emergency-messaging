@@ -1,49 +1,26 @@
-# CFLAGS:=-c -Wall -Weffc++ -g -std=c++11 -Iinclude
-# LDFLAGS:=-lboost_system -lpthread
-# # TODO change the makefile for StompEMIlient
-# all: EchoClient
+CXX ?= g++
+CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -pthread
+CPPFLAGS += -Iinclude
+LDLIBS += -lboost_system -pthread
+SOURCES = src/ConnectionHandler.cpp src/event.cpp src/StompClient.cpp src/StompProtocol.cpp
+OBJECTS = $(SOURCES:src/%.cpp=bin/%.o)
 
-# EchoClient: bin/ConnectionHandler.o bin/echoClient.o
-# 	g++ -o bin/EchoClient bin/ConnectionHandler.o bin/echoClient.o $(LDFLAGS)
+all: bin/StompEMIClient
 
-# StompWCIClient: bin/ConnectionHandler.o bin/StompClient.o bin/event.o
-# 	g++ -o bin/StompWCIClient bin/ConnectionHandler.o bin/StompClient.o $(LDFLAGS)
+bin/StompEMIClient: $(OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ $(LDLIBS) -o $@
 
-# bin/ConnectionHandler.o: src/ConnectionHandler.cpp
-# 	g++ $(CFLAGS) -o bin/ConnectionHandler.o src/ConnectionHandler.cpp
+bin/%.o: src/%.cpp | bin
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -c $< -o $@
 
-# bin/echoClient.o: src/echoClient.cpp
-# 	g++ $(CFLAGS) -o bin/echoClient.o src/echoClient.cpp
+bin:
+	mkdir -p bin
 
-# bin/event.o: src/event.cpp
-# 	g++ $(CFLAGS) -o bin/event.o src/event.cpp
-
-# bin/StompClient.o: src/StompClient.cpp
-# 	g++ $(CFLAGS) -o bin/StompClient.o src/StompClient.cpp
-
-# .PHONY: clean
-# clean:
-# 	rm -f bin/*
-
-# # End of file
-
-all : clean compile link run
-
-clean:
-	rm -f bin/*.o
-
-compile: src/ConnectionHandler.cpp src/event.cpp src/StompClient.cpp src/StompProtocol.cpp
-	g++ -c -Wall -Weffc++ -g -std=c++11 -Iinclude src/ConnectionHandler.cpp -o bin/ConnectionHandler.o
-	g++ -c -Wall -Weffc++ -g -std=c++11 -Iinclude src/event.cpp -o bin/event.o
-	g++ -c -Wall -Weffc++ -g -std=c++11 -Iinclude src/StompClient.cpp -o bin/StompClient.o
-	g++ -c -Wall -Weffc++ -g -std=c++11 -Iinclude src/StompProtocol.cpp -o bin/StompProtocol.o
-
-link:
-	g++ -o bin/StompEMIClient bin/ConnectionHandler.o bin/event.o bin/StompClient.o bin/StompProtocol.o -lpthread
-
-run:
-	clear
+run: all
 	./bin/StompEMIClient
 
+clean:
+	rm -f bin/*.o bin/*.d bin/StompEMIClient
 
-.PHONY: clean compile link run
+-include $(OBJECTS:.o=.d)
+.PHONY: all run clean

@@ -4,7 +4,9 @@
 #include <map>
 #include <string>
 #include "event.h"
-#include <c++/10/iomanip>
+#include <iomanip>
+#include <sstream>
+#include <ctime>
 
 class StompProtocol {
 public:
@@ -26,6 +28,7 @@ public:
 }
 
     bool isConnected() const { return connected;} 
+    const std::string& getUsername() const { return username; }
     
     void addSubscription(const std::string& channelName, int subscription_id) {
         subscriptions[channelName] = subscription_id;
@@ -50,7 +53,7 @@ public:
     std::vector<Event> getEvents(const std::string& channel_name, std::string user) {
         std::vector<Event> eventus;
         for (const auto& event : recordedEvents[channel_name]) {
-            if (event.getEventOwnerUser().find(user) != std::string::npos) {
+            if (event.getEventOwnerUser() == user) {
                 // std::cout << event.toString() << std::endl;
                 eventus.push_back(event);
             }
@@ -62,6 +65,7 @@ public:
 private:
     ConnectionHandler& connectionHandler;
     bool connected;
+    std::string username;
     std::map<std::string, int> subscriptions; // channel_name -> subscription_id
     std::map<int, std::string> receipts; // receipt_id  -> command
     std::map<std::string, std::vector<Event>> recordedEvents; // channel_name -> events
