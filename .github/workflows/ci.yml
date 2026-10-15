@@ -1,0 +1,36 @@
+name: Build and integration tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        java: ['17', '21']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+          cache-dependency-path: server/pom.xml
+      - name: Install C++ dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ make libboost-system-dev python3
+      - name: Verify Java server
+        run: mvn --batch-mode --no-transfer-progress -f server/pom.xml verify
+      - name: Build C++ client
+        run: make -C client -j2
+      - name: Test TCP protocol and C++ client in both server modes
+        run: python3 tests/integration_test.py
