@@ -6,9 +6,8 @@ A Java messaging server and C++ terminal client for reporting simulated emergenc
 events to subscribed channels. Clients can log in, join channels, publish event
 reports, collect summaries and disconnect with receipt acknowledgements.
 
-Developed as System Programming Languages coursework at Ben-Gurion University.
-This is an educational client/server project using a **subset of STOMP 1.2**,
-not an operational emergency-response service or a full message broker.
+Implements a **subset of STOMP 1.2** with two selectable server concurrency models.
+Use synthetic events and demo credentials on a trusted local machine.
 
 ## What it demonstrates
 
@@ -134,7 +133,7 @@ spaces.
 
 Use bare channel names in client commands, e.g. `alerts`. The server accepts bare
 names and `/alerts` as aliases. This normalization is an application convention,
-not a general rule of STOMP. The course virtual host is `stomp.cs.bgu.ac.il` in
+not a general rule of STOMP. The configured virtual host is `stomp.cs.bgu.ac.il` in
 the CONNECT header; the TCP address remains the `host:port` entered at login.
 
 The first login creates an in-memory account. Accounts and event subscriptions
@@ -169,22 +168,15 @@ server/src/main/java/bgu/spl/net/
   api/                         Framework interfaces
   impl/stomp/                  STOMP protocol, codec and shared state
   srv/                         TPC/reactor transport and actor thread pool
-  impl/echo, newsfeed, rci/     Recovered framework examples
 server/src/test/               Protocol and frame-codec unit tests
 client/include/               Transport/protocol/event models and JSON library
 client/src/                   C++ command loop and implementations
 tests/integration_test.py     Cross-language network tests
 examples/events.json          Synthetic report fixture
 docs/VALIDATION.md            Review findings, tests and known limits
-PROVENANCE.md                 Recovery and attribution record
 ```
 
-## Scope, history and limitations
-
-The eight original commits are retained unchanged. Preparation commits recover
-the outstanding working edits, repair build/protocol/client issues, and add tests,
-examples and documentation. See [PROVENANCE.md](PROVENANCE.md) for the original
-course framework and license boundaries.
+## Protocol scope and limitations
 
 The implementation covers CONNECT/STOMP, SUBSCRIBE, UNSUBSCRIBE, SEND and
 DISCONNECT with auto-acknowledged text MESSAGE delivery. It does not implement
@@ -199,5 +191,8 @@ port on available interfaces; it has not been hardened or load-tested for public
 deployment. Shared routing operations favor straightforward correctness over
 high-throughput isolation of slow subscribers. See [validation notes](docs/VALIDATION.md).
 
-The repository remains private pending course publication and contributor
-attribution review. No project-wide open-source license is asserted.
+
+## Third-party notices
+
+`client/include/json.hpp` includes nlohmann/json and retains its upstream MIT
+license notice. Existing source attribution notices are preserved.
